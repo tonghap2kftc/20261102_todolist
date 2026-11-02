@@ -6,6 +6,10 @@ from datetime import date
 from flask import Flask, g, redirect, render_template, request, url_for, flash
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+
+# DATABASE_URL 이 있으면 Supabase(PostgreSQL), 없으면 로컬 SQLite 사용
+DATABASE_URL = os.environ.get("DATABASE_URL")
+
 # Vercel 서버리스 환경은 /tmp 만 쓰기 가능 (인스턴스가 재시작되면 데이터 초기화)
 if os.environ.get("VERCEL"):
     DB_PATH = os.path.join(tempfile.gettempdir(), "todo.db")
@@ -18,10 +22,37 @@ app.secret_key = os.environ.get("SECRET_KEY", "change-this-secret-key")
 PRIORITIES = {"high": "높음", "medium": "보통", "low": "낮음"}
 
 
+class PostgresDB:
+    """sqlite3 와 같은 방식(?, execute, commit)으로 쓸 수 있게 감싼 PostgreSQL 연결"""
+
+    def __init__(self, url):
+        import psycopg
+        from psycopg.rows import dict_row
+
+        # Supabase 트랜잭션 풀러(6543)는 prepared statement 를 지원하지 않음
+        self.conn = psycopg.connect(url, row_factory=dict_row, prepare_threshold=None)
+
+    def execute(self, sql, params=()):
+        return self.conn.execute(sql.replace("?", "%s"), params)
+
+    def commit(self):
+        self.conn.commit()
+
+    def close(self):
+        self.conn.close()
+
+
+def connect():
+    if DATABASE_URL:
+        return PostgresDB(DATABASE_URL)
+    db = sqlite3.connect(DB_PATH)
+    db.row_factory = sqlite3.Row
+    return db
+
+
 def get_db():
     if "db" not in g:
-        g.db = sqlite3.connect(DB_PATH)
-        g.db.row_factory = sqlite3.Row
+        g.db = connect()
     return g.db
 
 
@@ -33,9 +64,19 @@ def close_db(exc):
 
 
 def init_db():
-    with sqlite3.connect(DB_PATH) as db:
-        db.execute(
-            """
+    if DATABASE_URL:
+        sql = """
+            CREATE TABLE IF NOT EXISTS todos (
+                id SERIAL PRIMARY KEY,
+                title TEXT NOT NULL,
+                priority TEXT NOT NULL DEFAULT 'medium',
+                due_date TEXT,
+                done INTEGER NOT NULL DEFAULT 0,
+                created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+            )
+        """
+    else:
+        sql = """
             CREATE TABLE IF NOT EXISTS todos (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 title TEXT NOT NULL,
@@ -44,8 +85,13 @@ def init_db():
                 done INTEGER NOT NULL DEFAULT 0,
                 created_at TEXT NOT NULL DEFAULT (datetime('now', 'localtime'))
             )
-            """
-        )
+        """
+    db = connect()
+    try:
+        db.execute(sql)
+        db.commit()
+    finally:
+        db.close()
 
 
 @app.route("/")
