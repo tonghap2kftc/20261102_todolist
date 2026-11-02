@@ -2,6 +2,7 @@ import os
 import sqlite3
 import tempfile
 from datetime import date
+from urllib.parse import unquote
 
 from flask import Flask, g, redirect, render_template, request, url_for, flash
 
@@ -22,6 +23,25 @@ app.secret_key = os.environ.get("SECRET_KEY", "change-this-secret-key")
 PRIORITIES = {"high": "높음", "medium": "보통", "low": "낮음"}
 
 
+def parse_database_url(url):
+    """postgresql://user:password@host:port/dbname 을 직접 분해.
+    비밀번호에 %, @, # 같은 특수문자가 인코딩 없이 들어 있어도 동작하도록 함"""
+    rest = url.split("://", 1)[1]
+    userinfo, hostpart = rest.rsplit("@", 1)
+    user, password = userinfo.split(":", 1)
+    hostport, _, dbname = hostpart.partition("/")
+    dbname = dbname.split("?", 1)[0] or "postgres"
+    host, _, port = hostport.partition(":")
+    return {
+        "user": unquote(user),
+        "password": unquote(password),
+        "host": host,
+        "port": int(port or 5432),
+        "dbname": dbname,
+        "sslmode": "require",
+    }
+
+
 class PostgresDB:
     """sqlite3 와 같은 방식(?, execute, commit)으로 쓸 수 있게 감싼 PostgreSQL 연결"""
 
@@ -30,7 +50,9 @@ class PostgresDB:
         from psycopg.rows import dict_row
 
         # Supabase 트랜잭션 풀러(6543)는 prepared statement 를 지원하지 않음
-        self.conn = psycopg.connect(url, row_factory=dict_row, prepare_threshold=None)
+        self.conn = psycopg.connect(
+            **parse_database_url(url), row_factory=dict_row, prepare_threshold=None
+        )
 
     def execute(self, sql, params=()):
         return self.conn.execute(sql.replace("?", "%s"), params)
