@@ -1,5 +1,6 @@
 import os
 import sqlite3
+import tempfile
 from datetime import date
 
 from flask import Flask, g, redirect, render_template, request, url_for, flash
@@ -7,7 +8,7 @@ from flask import Flask, g, redirect, render_template, request, url_for, flash
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 # Vercel 서버리스 환경은 /tmp 만 쓰기 가능 (인스턴스가 재시작되면 데이터 초기화)
 if os.environ.get("VERCEL"):
-    DB_PATH = "/tmp/todo.db"
+    DB_PATH = os.path.join(tempfile.gettempdir(), "todo.db")
 else:
     DB_PATH = os.path.join(BASE_DIR, "todo.db")
 
