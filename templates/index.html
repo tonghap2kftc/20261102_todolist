@@ -1,0 +1,55 @@
+{% extends "base.html" %}
+{% block content %}
+<form class="add-form" action="{{ url_for('add') }}" method="post">
+  <input type="text" name="title" placeholder="할 일을 입력하세요" required autofocus>
+  <select name="priority">
+    {% for key, label in priorities.items() %}
+      <option value="{{ key }}" {% if key == 'medium' %}selected{% endif %}>{{ label }}</option>
+    {% endfor %}
+  </select>
+  <input type="date" name="due_date">
+  <button type="submit">추가</button>
+</form>
+
+<div class="toolbar">
+  <nav class="filters">
+    <a href="{{ url_for('index', status='all') }}" class="{{ 'active' if status == 'all' }}">전체 ({{ counts.total }})</a>
+    <a href="{{ url_for('index', status='active') }}" class="{{ 'active' if status == 'active' }}">진행중 ({{ counts.total - counts.done }})</a>
+    <a href="{{ url_for('index', status='done') }}" class="{{ 'active' if status == 'done' }}">완료 ({{ counts.done }})</a>
+  </nav>
+  {% if counts.done %}
+  <form action="{{ url_for('clear_done') }}" method="post" onsubmit="return confirm('완료된 할 일을 모두 삭제할까요?')">
+    <button type="submit" class="link-btn">완료 항목 삭제</button>
+  </form>
+  {% endif %}
+</div>
+
+{% if counts.total %}
+<div class="progress"><div style="width: {{ (counts.done / counts.total * 100) | round | int }}%"></div></div>
+{% endif %}
+
+<ul class="todo-list">
+  {% for t in todos %}
+  <li class="{{ 'done' if t.done }}">
+    <form action="{{ url_for('toggle', todo_id=t.id) }}" method="post">
+      <button type="submit" class="check" title="완료 전환">{{ '✔' if t.done else '' }}</button>
+    </form>
+    <div class="info">
+      <span class="title">{{ t.title }}</span>
+      <span class="meta">
+        <span class="badge {{ t.priority }}">{{ priorities[t.priority] }}</span>
+        {% if t.due_date %}
+          <span class="due {{ 'overdue' if not t.done and t.due_date < today }}">마감 {{ t.due_date }}</span>
+        {% endif %}
+      </span>
+    </div>
+    <a href="{{ url_for('edit', todo_id=t.id) }}" class="icon-btn" title="수정">✏️</a>
+    <form action="{{ url_for('delete', todo_id=t.id) }}" method="post" onsubmit="return confirm('삭제할까요?')">
+      <button type="submit" class="icon-btn" title="삭제">🗑️</button>
+    </form>
+  </li>
+  {% else %}
+  <li class="empty">할 일이 없습니다.</li>
+  {% endfor %}
+</ul>
+{% endblock %}
